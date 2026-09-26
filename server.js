@@ -21,7 +21,8 @@ const VIEWER_TIMEOUT_MS = 12 * 60 * 60 * 1000; // encerra sessao ociosa em 12h
 
 // Senha forte por omissao. O utilizador pode definir ACCESS_PASSWORD.
 function generateStrongPassword() {
-    return crypto.randomBytes(6).toString('base64url').slice(0, 10);
+    // 16 bytes em base64url = 22 chars; cortamos a 10 para facilitar a digitacao
+    return crypto.randomBytes(16).toString('base64url').slice(0, 10);
 }
 
 const DEFAULT_PASSWORD_IS_WEAK = !process.env.ACCESS_PASSWORD;
