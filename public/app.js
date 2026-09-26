@@ -86,7 +86,16 @@ function copyMyId() {
     copyWithFeedback('myIdDisplay', 'copyIdBtn', myId);
 }
 
+let reconnectTimer = null;
+
 function initSignaling() {
+    // Evita sockets duplicados quando onclose dispara varias vezes
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+    if (ws && ws.readyState === WebSocket.OPEN) return;
+
     const loc = window.location;
     const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProto}//${loc.host || '127.0.0.1:8080'}/ws`;
@@ -111,9 +120,17 @@ function initSignaling() {
         }
     };
 
+    ws.onerror = () => { /* onclose trata da reconexao */ };
+
     ws.onclose = () => {
         if (isControlling) setHostStatus('Conexão perdida', 'busy');
-        setTimeout(initSignaling, 2000);
+        // Um unico timer: evita acumulo de reconexoes
+        if (!reconnectTimer) {
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                initSignaling();
+            }, 2000);
+        }
     };
 }
 

@@ -2,3 +2,12 @@ node_modules/
 *.log
 session_info.json
 cloudflared.exe
+
+# Ficheiros temporarios de teste/verificacao
+*-test.txt
+*-test.js
+*-verify.txt
+*-verify.js
+.check/
+.chrome-test-profile/
+
