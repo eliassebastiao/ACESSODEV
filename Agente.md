@@ -43,6 +43,10 @@ Sempre que o servidor sobe, ele grava e atualiza automaticamente o arquivo:
 
 O agente pode simplesmente ler esse arquivo JSON para extrair o `id`, `password` e o `publicUrl` (link mundial).
 
+> **Nota de segurança:** `/api/status` só devolve a senha quando o pedido vem de `localhost`.
+> Via link público, a senha **não** é exposta. Para credenciais use o `session_info.json`
+> ou `GET /api/credentials` a partir da própria máquina.
+
 ---
 
 ## 2. Como o Agente Deve Iniciar o Servidor
@@ -76,8 +80,10 @@ Consulte `http://localhost:8080/api/status` e leia o campo `desktop`:
 | `"OK"` | ✅ Captura funcionando | Pode conectar normalmente |
 | `"ABSENT"` | ❌ Sem sessão gráfica | **A tela PRETA é esperada** — reinstale via tarefa agendada |
 
-Teste definitivo de captura: baixe `http://localhost:8080/api/screenshot`.
-Se retornar uma imagem JPEG com o desktop real, a captura está 100% funcionando.
+Teste definitivo de captura (a partir da própria máquina, com token):
+```
+node -e "const s=require('./session_info.json');console.log('http://localhost:8080/api/screenshot?token='+s.id+s.password)"
+```
 
 ---
 

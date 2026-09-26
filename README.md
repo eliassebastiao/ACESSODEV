@@ -36,6 +36,48 @@
 
 ---
 
+## ⚠️ Segurança
+
+Este projeto dá **controle total do computador** a quem tiver o link e a senha.
+Leia antes de usar em qualquer máquina real.
+
+### Proteções já implementadas
+
+| Proteção | Comportamento |
+|---|---|
+| Senha forte por omissão | Gerada aleatoriamente a cada arranque (10 caracteres). Não é mais `1234`. |
+| Proteção contra força bruta | 5 tentativas erradas → bloqueio de 60 segundos para a origem. |
+| Resposta genérica | ID errado e senha errada devolvem a mesma mensagem, para não revelar o ID válido. |
+| Comparação em tempo constante | Impede ataques de temporização sobre a senha. |
+| Senha não é exposta pela internet | `/api/status` só devolve a senha em pedidos feitos de `localhost`. |
+| Capturas de ecrã protegidas | `/api/screenshot` exige um token. |
+| Encerramento por inatividade | Sessões abertas encerram ao fim de 12 horas. |
+
+### O que NÃO é protegido — leia com atenção
+
+- **O link `https://xxxx.trycloudflare.com` é público.** Qualquer pessoa com o link
+  vê o formulário de login. A única barreira é o par **ID + senha**.
+- **Não existe autenticação de dois fatores, nem verificação de identidade.**
+- **O túnel é HTTP dentro de HTTPS.** O conteúdo é cifrado em trânsito, mas o
+  link em si não é secreto — trate-o como público.
+- **O `Input` do host não é isolado.** Quem se ligar pode injetar comandos no
+  motor de emulação (`KEYDOWN`, `MOUSE_*`) e assim ultrapassar a palavra-passe
+  depois de autenticado.
+
+### Recomendações
+
+1. **Defina a sua própria senha** antes de qualquer uso real:
+   ```powershell
+   $env:ACCESS_PASSWORD = "uma senha forte e única"
+   npm start
+   ```
+2. **Não reutilize senhas** de outros serviços.
+3. **Desligue o túnel quando não precisar** — basta encerrar o processo.
+4. **Use apenas em máquinas e redes de confiança.** Este software é para
+   administração do próprio equipamento.
+
+---
+
 ## ⚠️ IMPORTANTE: Sessão Gráfica do Windows (Tela Preta)
 
 A captura de tela do Windows **só funciona dentro de uma sessão gráfica interativa**.

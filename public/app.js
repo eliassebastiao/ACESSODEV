@@ -42,6 +42,7 @@ function pollServerStatus() {
                     myId = data.session.id;
                     el('myIdDisplay').textContent = myId;
                 }
+                // A senha so vem em requisicoes locais; nunca e enviada ao navegador remoto
                 if (data.session.password) {
                     el('myPassword').value = data.session.password;
                 }

@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const express = require('express');
 const WebSocket = require('ws');
 const net = require('net');
@@ -10,15 +11,35 @@ const PORT = process.env.PORT || 8080;
 const ENGINE_PORT = 48002;
 const SESSION_FILE = path.join(__dirname, 'session_info.json');
 
+/* ------------------------------------------------------------------
+   Seguranca
+   ------------------------------------------------------------------ */
+
+const MAX_ATTEMPTS = 5;          // tentativas erradas por origem
+const LOCKOUT_MS = 60 * 1000;     // bloqueio de 60s apos exceder o limite
+const VIEWER_TIMEOUT_MS = 12 * 60 * 60 * 1000; // encerra sessao ociosa em 12h
+
+// Senha forte por omissao. O utilizador pode definir ACCESS_PASSWORD.
+function generateStrongPassword() {
+    return crypto.randomBytes(6).toString('base64url').slice(0, 10);
+}
+
+const DEFAULT_PASSWORD_IS_WEAK = !process.env.ACCESS_PASSWORD;
+
+/* ------------------------------------------------------------------
+   SESSAO
+   ------------------------------------------------------------------ */
+
 let hostSession = {
-    id: Math.floor(100000 + Math.random() * 900000).toString(),
-    password: process.env.ACCESS_PASSWORD || '1234',
+    id: crypto.randomInt(100000, 1000000).toString(),
+    password: process.env.ACCESS_PASSWORD || generateStrongPassword(),
     status: 'starting',
     startedAt: new Date().toISOString(),
     port: PORT,
     publicUrl: null,
     tunnelStatus: 'starting',
-    desktop: 'UNKNOWN'
+    desktop: 'UNKNOWN',
+    weakDefaultPassword: DEFAULT_PASSWORD_IS_WEAK
 };
 
 let tunnelProcess = null;
@@ -148,10 +169,45 @@ saveSession();
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Comparacao em tempo constante evita revelar o tamanho/ordem da senha
+function safeEquals(a, b) {
+    const bufA = Buffer.from(String(a));
+    const bufB = Buffer.from(String(b));
+    if (bufA.length !== bufB.length) {
+        crypto.timingSafeEqual(bufA, bufA);
+        return false;
+    }
+    return crypto.timingSafeEqual(bufA, bufB);
+}
+
+// Remove a senha do payload publico
+function publicSession() {
+    return {
+        id: hostSession.id,
+        status: hostSession.status,
+        startedAt: hostSession.startedAt,
+        port: hostSession.port,
+        publicUrl: hostSession.publicUrl,
+        tunnelStatus: hostSession.tunnelStatus,
+        desktop: hostSession.desktop
+    };
+}
+
+// So pedidos feitos directamente a maquina recebem a senha.
+// Nao usar remoteAddress: o cloudflared liga via 127.0.0.1, o que tornaria
+// qualquer pedido pelo tunel publico "local" e vazaria a senha.
+function isLocalRequest(req) {
+    const host = String(req.headers.host || '');
+    return /^localhost(:\d+)?$/.test(host) ||
+           /^127\.0\.0\.1(:\d+)?$/.test(host) ||
+           /^\[::1\](:\d+)?$/.test(host);
+}
+
 app.get('/api/status', (req, res) => {
+    const local = isLocalRequest(req);
     res.json({
         ok: true,
-        session: hostSession,
+        session: local ? hostSession : publicSession(),
         engineReady,
         activeViewers: viewers.size,
         hasFrames: latestFrame !== null,
@@ -164,7 +220,20 @@ app.get('/api/status', (req, res) => {
     });
 });
 
+// Credenciais completas — restrito a requisicoes locais
+app.get('/api/credentials', (req, res) => {
+    if (!isLocalRequest(req)) {
+        return res.status(403).json({ error: 'Acesso restrito a requisicoes locais.' });
+    }
+    res.json({ id: hostSession.id, password: hostSession.password, publicUrl: hostSession.publicUrl });
+});
+
+// Screenshot exige token — evita expor a tela a quem apenas tenha o link
 app.get('/api/screenshot', (req, res) => {
+    const token = req.query.token;
+    if (!token || !safeEquals(token, hostSession.id + hostSession.password)) {
+        return res.status(403).json({ error: 'Token invalido.' });
+    }
     if (latestFrame) {
         res.setHeader('Content-Type', 'image/jpeg');
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -294,10 +363,51 @@ function sendToEngine(cmd) {
         engineProcess.stdin.write(cmd + '\n');
     }
 }
-wss.on('connection', (ws) => {
+/* ------------------------------------------------------------------
+   Protecao contra forca bruta
+   ------------------------------------------------------------------ */
+
+// origem -> { fails, lockedUntil }
+const attempts = new Map();
+
+function getClientKey(req) {
+    const fwd = req.headers['x-forwarded-for'];
+    if (fwd) return String(fwd).split(',')[0].trim();
+    return req.socket.remoteAddress || 'desconhecido';
+}
+
+function isLocked(key) {
+    const rec = attempts.get(key);
+    if (!rec) return false;
+    if (rec.lockedUntil && Date.now() < rec.lockedUntil) return true;
+    if (rec.lockedUntil && Date.now() >= rec.lockedUntil) {
+        attempts.delete(key); // janela expirou, limpa
+    }
+    return false;
+}
+
+function registerFailure(key) {
+    const rec = attempts.get(key) || { fails: 0, lockedUntil: 0 };
+    rec.fails++;
+    if (rec.fails >= MAX_ATTEMPTS) {
+        rec.lockedUntil = Date.now() + LOCKOUT_MS;
+        rec.fails = 0;
+        console.log(`[SEGURANCA] Origem ${key} bloqueada por ${LOCKOUT_MS / 1000}s apos ${MAX_ATTEMPTS} tentativas.`);
+    }
+    attempts.set(key, rec);
+}
+
+function clearFailures(key) {
+    attempts.delete(key);
+}
+
+wss.on('connection', (ws, req) => {
     let isAuthorizedViewer = false;
+    let lastActivity = Date.now();
+    const clientKey = getClientKey(req);
 
     ws.on('message', (message) => {
+        lastActivity = Date.now();
         let data;
         try { data = JSON.parse(message); } catch (e) { return; }
 
@@ -305,25 +415,29 @@ wss.on('connection', (ws) => {
 
         // Cliente solicita conexão para controlar este computador
         if (type === 'CONNECT_TARGET') {
+            if (isLocked(clientKey)) {
+                ws.send(JSON.stringify({
+                    type: 'CONNECT_ERROR',
+                    message: 'Demasiadas tentativas. Aguarde 60 segundos.'
+                }));
+                return;
+            }
+
             const targetId = (data.targetId || '').replace(/\s+/g, '');
             const pass = data.password || '';
 
-            // Validação direta contra a sessão deste Host
-            if (targetId !== hostSession.id) {
+            // Resposta generica: nao revela qual campo falhou nem o ID correto
+            if (!safeEquals(targetId, hostSession.id) ||
+                (hostSession.password && !safeEquals(pass, hostSession.password))) {
+                registerFailure(clientKey);
                 ws.send(JSON.stringify({
                     type: 'CONNECT_ERROR',
-                    message: `ID incorreto. O ID deste computador é ${hostSession.id}`
+                    message: 'ID ou senha inválidos.'
                 }));
                 return;
             }
 
-            if (hostSession.password && pass !== hostSession.password) {
-                ws.send(JSON.stringify({
-                    type: 'CONNECT_ERROR',
-                    message: 'Senha incorreta para acesso remoto.'
-                }));
-                return;
-            }
+            clearFailures(clientKey);
 
             // Autoriza este WebSocket a receber frames e enviar inputs
             isAuthorizedViewer = true;
@@ -361,16 +475,34 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         if (isAuthorizedViewer) {
             viewers.delete(ws);
+            clearInterval(idleTimer);
             console.log(`[APP] Operador desconectado. Restantes: ${viewers.size}`);
         }
     });
+
+    // Encerra sessoes esquecidas: evita que um link público fique aberto indefinidamente
+    const idleTimer = setInterval(() => {
+        if (Date.now() - lastActivity > VIEWER_TIMEOUT_MS) {
+            console.log('[SEGURANCA] Sessao encerrada por inatividade.');
+            try {
+                ws.send(JSON.stringify({
+                    type: 'HOST_DISCONNECTED',
+                    message: 'Sessão encerrada por inatividade.'
+                }));
+            } catch (e) {}
+            ws.close();
+        }
+    }, 60 * 1000);
 });
 
 server.listen(PORT, () => {
     console.log(`=======================================================`);
     console.log(`  ACESSODESK ULTRA INICIADO COM SUCESSO!`);
     console.log(`  Sessao ID     : ${hostSession.id}`);
-    console.log(`  Senha Padrao  : ${hostSession.password}`);
+    console.log(`  Senha         : ${hostSession.password}`);
+    if (hostSession.weakDefaultPassword) {
+        console.log(`  AVISO         : senha temporaria. Defina ACCESS_PASSWORD para uma senha sua.`);
+    }
     console.log(`  Interface Web : http://localhost:${PORT}`);
     console.log(`  API Status    : http://localhost:${PORT}/api/status`);
     console.log(`=======================================================`);
