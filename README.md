@@ -36,6 +36,47 @@
 
 ---
 
+## ⚠️ IMPORTANTE: Sessão Gráfica do Windows (Tela Preta)
+
+A captura de tela do Windows **só funciona dentro de uma sessão gráfica interativa**.
+
+Se você iniciar o aplicativo por um meio que **não** tem acesso ao seu desktop
+(como um serviço do Windows, sessão 0, SSH, ou um terminal isolado), a captura
+vai retornar **sempre uma imagem preta** — mesmo que o servidor e a rede
+estejam 100% funcionando.
+
+### 🚨 Solução: use o `INSTALAR.bat`
+
+Clique com o **botão direito** em `INSTALAR.bat` e escolha
+**"Executar como administrador"**. Ele registra o aplicativo como uma
+**tarefa agendada do Windows** que roda dentro da sua sessão gráfica a cada
+login, garantindo que a captura funcione sempre.
+
+Depois de instalado, o app inicia automaticamente junto com o Windows.
+Para iniciar manualmente a qualquer momento, use `INICIAR_SILENCIOSO.bat`.
+
+### 🔍 Como verificar se está tudo certo
+
+Acesse `http://localhost:8080/api/status` e veja o campo `desktop`:
+
+| Valor | Significado |
+|---|---|
+| `"OK"` | ✅ Tudo certo — a captura funciona |
+| `"ABSENT"` | ❌ Sem sessão gráfica — a tela vai ficar preta |
+
+Se aparecer `"ABSENT"`, execute o `INSTALAR.bat` como administrador.
+
+Você também pode testar a captura diretamente abrindo
+`http://localhost:8080/api/screenshot` no navegador — se aparecer a sua tela,
+está tudo funcionando.
+
+### Para Desinstalar
+```powershell
+schtasks /delete /tn "AcessoDeskUltra" /f
+```
+
+---
+
 ## 🚀 Instalação Rápida (Clone & Run)
 
 ### 1. Clonar o repositório:
@@ -50,8 +91,12 @@ npm install
 ```
 
 ### 3. Iniciar o aplicativo:
-Você pode iniciar de qualquer uma das três formas:
 
+**Instalação Recomendada (sessão gráfica garantida):**
+- Clique com o **botão direito** em `INSTALAR.bat` → **"Executar como administrador"**.
+- O app passa a iniciar automaticamente a cada login do Windows.
+
+**Execução manual:**
 - **Via NPM / Node**:
   ```bash
   npm start
@@ -122,7 +167,9 @@ ACESSODEV/
 ├── AcessoDesk.exe          # Executável do aplicativo
 ├── server.js               # Servidor Node.js (WebSockets, HTTP e Túnel Cloudflare)
 ├── relay-server.js         # Servidor de sinalização standalone
-├── INICIAR_ACESSODESK.bat  # Inicializador em 1 clique
+├── INSTALAR.bat            # Instalador: cria tarefa agendada na sessão gráfica
+├── INICIAR_SILENCIOSO.bat  # Inicializador automático (usado pela tarefa agendada)
+├── INICIAR_ACESSODESK.bat  # Inicializador manual em 1 clique
 ├── session_info.json       # Estado atual da sessão (ID, Senha, Link Mundial)
 ├── Agente.md               # Manual de automação para Agentes de IA
 ├── LICENSE                 # Licença MIT

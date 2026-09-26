@@ -47,19 +47,59 @@ O agente pode simplesmente ler esse arquivo JSON para extrair o `id`, `password`
 
 ## 2. Como o Agente Deve Iniciar o Servidor
 
-Caso o servidor não esteja aberto, o agente deve executar o seguinte comando em segundo plano no diretório do projeto:
+⚠️ **ATENÇÃO — CAUSA #1 DE TELA PRETA:** A captura de tela do Windows **exige uma sessão gráfica interativa**.
+Se o processo for iniciado por um meio isolado do desktop (serviço do Windows, sessão 0, SSH, terminal
+sem desktop), a captura retorna **sempre imagem preta**, mesmo com rede e servidor perfeitos.
+
+### ✅ Início Recomendado (dentro da sessão gráfica)
 
 ```powershell
 cd c:\Users\HP\Desktop\ACESSODEV
-Start-Process -FilePath "node" -ArgumentList "server.js" -WindowStyle Hidden
+.\INICIAR_SILENCIOSO.bat
 ```
-*(Ou iniciar via `INICIAR_ACESSODESK.bat`)*
 
-Aguarde cerca de 3 a 4 segundos para que o motor de captura (`ScreenHostEngine.exe`) e o túnel mundial da Cloudflare conectem.
+Se o agente **não** tem acesso ao desktop, deve instalar como tarefa agendada **uma única vez**
+(usuário executa como administrador):
+
+```powershell
+schtasks /create /tn "AcessoDeskUltra" /tr "c:\Users\HP\Desktop\ACESSODEV\INICIAR_SILENCIOSO.bat" /sc onlogon /rl highest /f
+```
+
+Depois disso, o app sobe automaticamente em cada login do Windows, **sempre dentro da sessão gráfica**.
+
+### 🔍 Como o Agente Verifica se a Captura Está Funcional
+
+Consulte `http://localhost:8080/api/status` e leia o campo `desktop`:
+
+| Valor | Significado | Ação |
+|---|---|---|
+| `"OK"` | ✅ Captura funcionando | Pode conectar normalmente |
+| `"ABSENT"` | ❌ Sem sessão gráfica | **A tela PRETA é esperada** — reinstale via tarefa agendada |
+
+Teste definitivo de captura: baixe `http://localhost:8080/api/screenshot`.
+Se retornar uma imagem JPEG com o desktop real, a captura está 100% funcionando.
 
 ---
 
-## 3. Como Obter a Sessão, Senha e Link Mundial no Terminal
+## 3. Diagnóstico Completo da Tela Preta
+
+Siga esta ordem de verificação:
+
+| Passo | Comando / URL | Resultado esperado |
+|---|---|---|
+| 1 | `GET /api/status` | `"engineReady": true` |
+| 2 | `GET /api/status` | `"desktop": "OK"` ⚠️ **se `ABSENT`, a tela PRETA é esperada** |
+| 3 | `GET /api/status` | `"hasFrames": true` |
+| 4 | `GET /api/screenshot` | Deve retornar um JPEG com a tela do desktop |
+| 5 | `GET /api/status` | `"activeViewers": 1` após o operador conectar |
+
+- **Se `desktop: ABSENT`** → a captura é preta por falta de sessão gráfica. Execute o `INSTALAR.bat` como administrador.
+- **Se `desktop: OK` mas a tela continua preta** → provavelmente é **cache do navegador**. Peça ao operador para fazer `Ctrl+F5` (recarregamento forçado).
+- **Se `desktop: OK` e `/api/screenshot` mostra a tela, mas o canvas continua preto** → o problema é no frontend do operador. Verifique se ele está usando a versão mais recente do `public/app.js`.
+
+---
+
+## 4. Como Obter a Sessão, Senha e Link Mundial no Terminal
 
 O agente pode ler tudo com um comando direto em linha única:
 
@@ -75,7 +115,7 @@ node -e "const s = require('./session_info.json'); console.log('LINK:', s.public
 
 ---
 
-## 4. Como Acessar este PC a Partir de Qualquer Lugar do Mundo
+## 5. Como Acessar este PC a Partir de Qualquer Lugar do Mundo
 
 1. Abra o navegador em qualquer dispositivo (celular, notebook de trabalho, servidor remoto).
 2. Acesse a URL que está em `publicUrl` (ex: `https://xxxx.trycloudflare.com`).

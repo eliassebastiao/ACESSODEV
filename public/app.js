@@ -27,6 +27,14 @@ function pollServerStatus() {
                     if (pubInput) pubInput.value = data.session.publicUrl;
                 }
             }
+            // Alerta de sessao grafica ausente (captura preta)
+            const warn = document.getElementById('desktopWarning');
+            if (warn && data.captureWarning) {
+                document.getElementById('desktopWarningText').innerText = data.captureWarning;
+                warn.style.display = 'block';
+            } else if (warn) {
+                warn.style.display = 'none';
+            }
         })
         .catch(() => {});
 }

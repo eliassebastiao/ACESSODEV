@@ -52,12 +52,43 @@ namespace ScreenHostEngine {
         static TcpClient streamClient = null;
         static NetworkStream streamWriter = null;
         static object streamLock = new object();
+        [DllImport("user32.dll")]
+        static extern IntPtr GetDesktopWindow();
+        [DllImport("user32.dll")]
+        static extern IntPtr GetDC(IntPtr hWnd);
+        [DllImport("user32.dll")]
+        static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+        [DllImport("user32.dll")]
+        static extern bool CloseDesktop(IntPtr hDesktop);
+
+        const uint DESKTOP_READOBJECTS = 0x0001;
+        const uint DESKTOP_SWITCHDESKTOP = 0x0100;
+
+        // Verifica se o processo tem acesso a uma sessao grafica interactiva.
+        // Sem isso, CopyFromScreen devolve sempre uma imagem preta.
+        static bool HasInteractiveDesktop() {
+            try {
+                IntPtr desktop = OpenInputDesktop(0, false, DESKTOP_READOBJECTS | DESKTOP_SWITCHDESKTOP);
+                if (desktop == IntPtr.Zero) return false;
+                CloseDesktop(desktop);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
         static void Main(string[] args) {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Rectangle bounds = Screen.PrimaryScreen.Bounds;
             screenWidth = bounds.Width;
             screenHeight = bounds.Height;
             InitEncoder();
+
+            if (!HasInteractiveDesktop()) {
+                Console.WriteLine("ENGINE_WARNING:NO_DESKTOP");
+                Console.Error.WriteLine("AVISO: Sem sessao grafica interactiva. A captura de tela retornara imagem PRETA.");
+                Console.Error.WriteLine("Solucao: inicie o aplicativo na sua sessao Windows (veja INSTALAR.bat).");
+            }
 
             int streamPort = 48002;
             if (args.Length >= 1) int.TryParse(args[0], out streamPort);
@@ -67,6 +98,11 @@ namespace ScreenHostEngine {
             captureThread.Start();
 
             Console.WriteLine("ENGINE_READY:" + screenWidth + "x" + screenHeight);
+            if (!HasInteractiveDesktop()) {
+                Console.WriteLine("ENGINE_DESKTOP:ABSENT");
+            } else {
+                Console.WriteLine("ENGINE_DESKTOP:OK");
+            }
 
             string line;
             while (running && (line = Console.ReadLine()) != null) {

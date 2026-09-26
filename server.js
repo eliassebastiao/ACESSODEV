@@ -17,7 +17,8 @@ let hostSession = {
     startedAt: new Date().toISOString(),
     port: PORT,
     publicUrl: null,
-    tunnelStatus: 'starting'
+    tunnelStatus: 'starting',
+    desktop: 'UNKNOWN'
 };
 
 let tunnelProcess = null;
@@ -155,6 +156,10 @@ app.get('/api/status', (req, res) => {
         activeViewers: viewers.size,
         hasFrames: latestFrame !== null,
         frameSize: latestFrame ? latestFrame.length : 0,
+        desktop: hostSession.desktop || 'UNKNOWN',
+        captureWarning: (hostSession.desktop === 'ABSENT')
+            ? 'SEM SESSAO GRAFICA: a captura retorna imagem preta. Execute INSTALAR.bat como administrador.'
+            : null,
         uptime: process.uptime()
     });
 });
@@ -182,12 +187,34 @@ function startEngine() {
     const exePath = path.join(__dirname, 'ScreenHostEngine.exe');
     engineProcess = spawn(exePath, [ENGINE_PORT.toString()]);
 
+    let desktopStatus = 'UNKNOWN';
+
     engineProcess.stdout.on('data', (d) => {
         const str = d.toString().trim();
         console.log('[ENGINE OUT]', str);
+
+        if (str.includes('ENGINE_DESKTOP:OK')) {
+            desktopStatus = 'OK';
+            if (hostSession.desktop !== 'OK') {
+                hostSession.desktop = 'OK';
+                saveSession();
+            }
+        } else if (str.includes('ENGINE_DESKTOP:ABSENT')) {
+            desktopStatus = 'ABSENT';
+            hostSession.desktop = 'ABSENT';
+            saveSession();
+            console.log('=======================================================');
+            console.log('  [!] AVISO GRAVE: SEM SESSAO GRAFICA INTERATIVA!');
+            console.log('  A captura de tela vai devolver IMAGEM PRETA.');
+            console.log('  SOLUCAO: execute INSTALAR.bat como ADMINISTRADOR');
+            console.log('  para o app rodar dentro da sua sessao Windows.');
+            console.log('=======================================================');
+        }
+
         if (str.includes('ENGINE_READY')) {
             engineReady = true;
             hostSession.status = 'ready';
+            if (hostSession.desktop === 'UNKNOWN') hostSession.desktop = desktopStatus;
             saveSession();
             connectEngineSocket();
         }
