@@ -247,15 +247,18 @@ function connectEngineSocket() {
 // Cache do último frame capturado para entrega instantânea
 let latestFrame = null;
 
+const MAX_SEND_BUFFER = 2 * 1024 * 1024; // 2MB: descarta frames se o cliente estiver lento
+
 function broadcastFrame(frameBuffer) {
     latestFrame = frameBuffer;
     if (viewers.size === 0) return;
     for (const ws of viewers) {
-        if (ws.readyState === WebSocket.OPEN) {
-            try {
-                ws.send(frameBuffer, { binary: true });
-            } catch (err) {}
-        }
+        if (ws.readyState !== WebSocket.OPEN) continue;
+        try {
+            // Backpressure: ignora o frame se o cliente não conseguiu consumir os anteriores
+            if (ws.bufferedAmount > MAX_SEND_BUFFER) continue;
+            ws.send(frameBuffer, { binary: true });
+        } catch (err) {}
     }
 }
 

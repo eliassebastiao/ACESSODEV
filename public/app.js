@@ -7,6 +7,8 @@ let frameImg = new Image();
 let frameCount = 0;
 let lastFpsTime = Date.now();
 let isControlling = false;
+let isDecoding = false;
+let pendingBitmap = null;
 
 function pollServerStatus() {
     fetch('/api/status')
@@ -98,17 +100,28 @@ function handleMessage(data) {
 }
 function renderFrameBuffer(buffer) {
     if (!buffer || buffer.byteLength === 0) return;
-    const blob = new Blob([buffer], { type: 'image/jpeg' });
-    const url = URL.createObjectURL(blob);
-    
-    // Suporte tanto para Canvas quanto para Imagem de alta performance
-    frameImg.onload = () => {
-        if (canvas.width !== frameImg.width || canvas.height !== frameImg.height) {
-            canvas.width = frameImg.width;
-            canvas.height = frameImg.height;
+
+    // Mantém apenas o frame mais recente enquanto o navegador ainda decodifica
+    if (isDecoding) {
+        pendingBitmap = buffer;
+        return;
+    }
+
+    decodeAndDraw(buffer);
+}
+
+async function decodeAndDraw(buffer) {
+    isDecoding = true;
+    try {
+        const blob = new Blob([buffer], { type: 'image/jpeg' });
+        const bitmap = await createImageBitmap(blob);
+
+        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
         }
-        ctx.drawImage(frameImg, 0, 0);
-        URL.revokeObjectURL(url);
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
 
         frameCount++;
         const now = Date.now();
@@ -117,12 +130,16 @@ function renderFrameBuffer(buffer) {
             frameCount = 0;
             lastFpsTime = now;
         }
-    };
-    frameImg.onerror = (e) => {
+    } catch (e) {
         console.error('Erro ao decodificar frame JPEG:', e);
-        URL.revokeObjectURL(url);
-    };
-    frameImg.src = url;
+    } finally {
+        isDecoding = false;
+        if (pendingBitmap) {
+            const next = pendingBitmap;
+            pendingBitmap = null;
+            decodeAndDraw(next);
+        }
+    }
 }
 
 function connectToRemote() {
