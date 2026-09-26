@@ -34,9 +34,10 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 
     --ease: cubic-bezier(0.22, 1, 0.36, 1);
-    --font-ui: 'Inter', system-ui, sans-serif;
-    --font-display: 'Inter Tight', 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+    /* Fallbacks locais: se o Google Fonts nao responder, o design mantem-se */
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-display: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

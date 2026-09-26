@@ -168,7 +168,16 @@ function saveSession() {
 saveSession();
 
 const app = express();
-app.use(express.static(path.join(__dirname, 'public')));
+// Sem cache nos ficheiros estaticos: evita que o browser sirva CSS/JS antigos
+// depois de uma atualizacao, o que fazia a interface aparecer sem estilos.
+app.use(express.static(path.join(__dirname, 'public'), {
+    etag: true,
+    lastModified: true,
+    maxAge: 0,
+    setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+}));
 
 // Comparacao em tempo constante evita revelar o tamanho/ordem da senha
 function safeEquals(a, b) {
