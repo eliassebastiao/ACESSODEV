@@ -21,6 +21,8 @@ let hostSession = {
 };
 
 let tunnelProcess = null;
+let tunnelAttempts = 0;
+const MAX_TUNNEL_ATTEMPTS = 5;
 
 function downloadCloudflaredIfMissing() {
     return new Promise((resolve) => {
@@ -71,19 +73,37 @@ async function startCloudflareTunnel() {
         }
     }
 
-    console.log('[TUNNEL] Criando link público mundial via Cloudflare Tunnel...');
+    if (tunnelAttempts >= MAX_TUNNEL_ATTEMPTS) {
+        console.log('[TUNNEL] Limite de tentativas de túnel atingido. Modo local.');
+        hostSession.tunnelStatus = 'error';
+        saveSession();
+        return;
+    }
+
+    tunnelAttempts++;
+    console.log(`[TUNNEL] Criando link público mundial via Cloudflare (${tunnelAttempts}/${MAX_TUNNEL_ATTEMPTS})...`);
     hostSession.tunnelStatus = 'connecting';
     saveSession();
 
     try {
         tunnelProcess = spawn(cloudflaredExe, ['tunnel', '--url', `http://localhost:${PORT}`]);
 
+        const tunnelTimeout = setTimeout(() => {
+            if (!hostSession.publicUrl && hostSession.tunnelStatus === 'connecting') {
+                console.log('[TUNNEL] Timeout ao obter URL do Cloudflare.');
+                hostSession.tunnelStatus = 'timeout';
+                saveSession();
+            }
+        }, 30000);
+
         tunnelProcess.stderr.on('data', (data) => {
             const output = data.toString();
             const match = output.match(/https:\/\/[a-z0-9\-]+\.trycloudflare\.com/);
             if (match && !hostSession.publicUrl) {
+                clearTimeout(tunnelTimeout);
                 hostSession.publicUrl = match[0];
                 hostSession.tunnelStatus = 'online';
+                tunnelAttempts = 0;
                 saveSession();
 
                 console.log(`=======================================================`);
@@ -96,14 +116,20 @@ async function startCloudflareTunnel() {
         });
 
         tunnelProcess.on('exit', () => {
-            console.log('[TUNNEL] Conexão Cloudflare fechada. Reconectando em 5s...');
+            clearTimeout(tunnelTimeout);
             hostSession.publicUrl = null;
-            hostSession.tunnelStatus = 'disconnected';
-            saveSession();
-            setTimeout(startCloudflareTunnel, 5000);
+            if (tunnelAttempts < MAX_TUNNEL_ATTEMPTS) {
+                console.log('[TUNNEL] Reconectando túnel em 5s...');
+                hostSession.tunnelStatus = 'disconnected';
+                saveSession();
+                setTimeout(startCloudflareTunnel, 5000);
+            } else {
+                hostSession.tunnelStatus = 'error';
+                saveSession();
+            }
         });
     } catch (e) {
-        console.error('[TUNNEL] Erro ao iniciar:', e.message);
+        console.error('[TUNNEL] Erro:', e.message);
         hostSession.tunnelStatus = 'error';
         saveSession();
     }
@@ -126,7 +152,7 @@ app.get('/api/status', (req, res) => {
         ok: true,
         session: hostSession,
         engineReady,
-        peersCount: peers.size,
+        activeViewers: viewers.size,
         uptime: process.uptime()
     });
 });
@@ -134,7 +160,7 @@ app.get('/api/status', (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: '/ws' });
 
-const peers = new Map();
+const viewers = new Set();
 let engineProcess = null;
 let engineSocket = null;
 let engineReady = false;
@@ -208,10 +234,11 @@ function connectEngineSocket() {
 }
 
 function broadcastFrame(frameBuffer) {
-    for (const [id, peer] of peers.entries()) {
-        if (peer.role === 'client' && peer.ws && peer.ws.readyState === WebSocket.OPEN) {
+    if (viewers.size === 0) return;
+    for (const ws of viewers) {
+        if (ws.readyState === WebSocket.OPEN) {
             try {
-                peer.ws.send(frameBuffer, { binary: true });
+                ws.send(frameBuffer, { binary: true });
             } catch (err) {}
         }
     }
@@ -223,7 +250,7 @@ function sendToEngine(cmd) {
     }
 }
 wss.on('connection', (ws) => {
-    let currentId = null;
+    let isAuthorizedViewer = false;
 
     ws.on('message', (message) => {
         let data;
@@ -231,51 +258,21 @@ wss.on('connection', (ws) => {
 
         const type = data.type;
 
-        if (type === 'GET_HOST_CONFIG') {
-            ws.send(JSON.stringify({
-                type: 'HOST_CONFIG',
-                id: hostSession.id,
-                password: hostSession.password
-            }));
-            return;
-        }
-
-        if (type === 'REGISTER_OPERATOR') {
-            currentId = data.id || ('client_' + Math.random().toString(36).substring(2, 9));
-            peers.set(currentId, { ws, role: 'operator' });
-            ws.send(JSON.stringify({ type: 'REGISTERED', id: currentId }));
-            return;
-        }
-
-        if (type === 'REGISTER_HOST') {
-            currentId = data.id || hostSession.id;
-            hostSession.id = currentId;
-            if (data.password) hostSession.password = data.password;
-            saveSession();
-
-            peers.set(currentId, { ws, role: 'host', password: hostSession.password });
-            ws.send(JSON.stringify({ type: 'REGISTERED', id: currentId }));
-            console.log(`[APP] Host registrado no servidor com ID: ${currentId} | Senha: ${hostSession.password}`);
-            return;
-        }
-
+        // Cliente solicita conexão para controlar este computador
         if (type === 'CONNECT_TARGET') {
             const targetId = (data.targetId || '').replace(/\s+/g, '');
-            
-            // Verifica se o ID bate com o host local do servidor
-            const isLocalHost = (targetId === hostSession.id);
-            const target = peers.get(targetId);
+            const pass = data.password || '';
 
-            if (!isLocalHost && !target) {
+            // Validação direta contra a sessão deste Host
+            if (targetId !== hostSession.id) {
                 ws.send(JSON.stringify({
                     type: 'CONNECT_ERROR',
-                    message: 'Computador não encontrado ou offline. Verifique o ID.'
+                    message: `ID incorreto. O ID deste computador é ${hostSession.id}`
                 }));
                 return;
             }
 
-            const expectedPass = isLocalHost ? hostSession.password : (target ? target.password : '');
-            if (expectedPass && expectedPass !== data.password) {
+            if (hostSession.password && pass !== hostSession.password) {
                 ws.send(JSON.stringify({
                     type: 'CONNECT_ERROR',
                     message: 'Senha incorreta para acesso remoto.'
@@ -283,47 +280,36 @@ wss.on('connection', (ws) => {
                 return;
             }
 
-            currentId = 'client_' + Math.random().toString(36).substring(2, 9);
-            peers.set(currentId, { ws, role: 'client', targetId: targetId });
+            // Autoriza este WebSocket a receber frames e enviar inputs
+            isAuthorizedViewer = true;
+            viewers.add(ws);
 
-            if (target && target.ws) {
-                try {
-                    target.ws.send(JSON.stringify({ type: 'CLIENT_ATTACHED', clientId: currentId }));
-                } catch (e) {}
-            }
+            ws.send(JSON.stringify({
+                type: 'CONNECTED_SUCCESS',
+                targetId: hostSession.id
+            }));
 
-            ws.send(JSON.stringify({ type: 'CONNECTED_SUCCESS', targetId: targetId }));
-            console.log(`[APP] Conexão bem-sucedida! Cliente ${currentId} -> Host ${targetId}`);
+            console.log(`[APP] Operador conectado e autorizado! Total viewers: ${viewers.size}`);
             return;
         }
 
-        if (type === 'INPUT') {
+        // Comandos de input (mouse e teclado)
+        if (type === 'INPUT' && isAuthorizedViewer) {
             if (data.payload) sendToEngine(data.payload);
             return;
         }
 
-        if (type === 'CONFIG') {
+        // Alterações de FPS / Qualidade
+        if (type === 'CONFIG' && isAuthorizedViewer) {
             if (data.payload) sendToEngine(data.payload);
             return;
         }
     });
 
     ws.on('close', () => {
-        if (currentId && peers.has(currentId)) {
-            const p = peers.get(currentId);
-            if (p.role === 'host') {
-                for (const [cId, client] of peers.entries()) {
-                    if (client.targetId === currentId) {
-                        try {
-                            client.ws.send(JSON.stringify({
-                                type: 'HOST_DISCONNECTED',
-                                message: 'O computador host encerrou a conexão.'
-                            }));
-                        } catch (e) {}
-                    }
-                }
-            }
-            peers.delete(currentId);
+        if (isAuthorizedViewer) {
+            viewers.delete(ws);
+            console.log(`[APP] Operador desconectado. Restantes: ${viewers.size}`);
         }
     });
 });

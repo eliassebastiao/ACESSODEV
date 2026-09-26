@@ -216,7 +216,8 @@ function setupInputListeners() {
 
     window.addEventListener('keydown', (e) => {
         if (!isControlling) return;
-        if (['Tab', 'Alt', 'F5', 'Control'].includes(e.key)) {
+        // Previne navegação acidental mantendo teclas ativas para o host
+        if (['F5'].includes(e.key)) {
             e.preventDefault();
         }
         sendInput(`KEYDOWN ${e.keyCode}`);
