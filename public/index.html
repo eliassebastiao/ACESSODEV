@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AcessoDesk Ultra - Controle Remoto Total</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <div class="brand-icon">⚡</div>
+            <div>
+                <div class="brand-title">AcessoDesk Ultra</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Controle Remoto de Alta Performance</div>
+            </div>
+        </div>
+        <div class="status-badge" id="hostStatusBadge">
+            <span class="status-dot"></span>
+            <span id="hostStatusText">Pronto para Conexão</span>
+        </div>
+    </header>
+
+    <div class="main-container" id="lobbyContainer">
+        <div class="cards-grid">
+            <!-- HOST CARD -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Este Computador</div>
+                        <div class="card-subtitle">Permitir acesso remoto a este dispositivo</div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Seu ID de Conexão Rápida</label>
+                    <div class="id-box">
+                        <span class="id-display" id="myIdDisplay">--- ---</span>
+                        <button class="copy-btn" id="copyIdBtn" onclick="copyMyId()">Copiar</button>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Senha de Acesso</label>
+                    <input type="text" id="myPassword" class="input-field" value="1234">
+                </div>
+
+                <div class="input-group" id="publicUrlBox" style="background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.3); border-radius: 8px; padding: 10px;">
+                    <label style="color: #38bdf8; font-weight: 600;">🌐 Link de Acesso Mundial (Internet / 4G):</label>
+                    <div style="display:flex; gap: 8px; align-items: center; margin-top: 4px;">
+                        <input type="text" id="publicUrlInput" class="input-field" style="font-size: 0.85rem; padding: 8px; flex: 1;" readonly value="Gerando túnel Cloudflare seguro...">
+                        <button class="copy-btn" id="copyUrlBtn" onclick="copyPublicUrl()">Copiar Link</button>
+                    </div>
+                </div>
+
+                <div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
+                    Mantenha o app aberto para permitir o controle remoto por operadores autorizados.
+                </div>
+            </div>
+
+            <!-- CLIENT CARD -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Controlar Outro PC</div>
+                        <div class="card-subtitle">Insira o ID do computador remoto</div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>ID do Computador Remoto</label>
+                    <input type="text" id="targetIdInput" class="input-field" placeholder="ex: 123456" maxlength="7">
+                </div>
+
+                <div class="input-group">
+                    <label>Senha de Acesso</label>
+                    <input type="password" id="targetPasswordInput" class="input-field" placeholder="Senha do PC remoto" value="1234">
+                </div>
+
+                <button class="btn-connect" onclick="connectToRemote()">
+                    <span>Conectar e Assumir Controle</span>
+                    <span>➜</span>
+                </button>
+
+                <div id="connectFeedback" style="font-size: 0.85rem; color: #ef4444; min-height: 20px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEWER SCREEN -->
+    <div class="viewer-container" id="viewerContainer">
+        <div class="viewer-bar">
+            <div style="display:flex; align-items:center; gap: 12px;">
+                <span style="font-weight: 700; color: #38bdf8;">Controlando:</span>
+                <span id="remoteTargetName" style="font-family: monospace; color: #e2e8f0;">-</span>
+                <span class="fps-counter" id="fpsDisplay">FPS: 0</span>
+            </div>
+
+            <div class="viewer-tools">
+                <label style="font-size: 0.8rem; color: #94a3b8;">Qualidade:</label>
+                <select id="qualitySelect" onchange="changeQuality(this.value)">
+                    <option value="50">Rápida (50%)</option>
+                    <option value="70" selected>Equilibrada (70%)</option>
+                    <option value="90">Ultra HD (90%)</option>
+                </select>
+
+                <label style="font-size: 0.8rem; color: #94a3b8;">FPS:</label>
+                <select id="fpsSelect" onchange="changeFps(this.value)">
+                    <option value="20">20 FPS</option>
+                    <option value="30" selected>30 FPS</option>
+                    <option value="60">60 FPS</option>
+                </select>
+
+                <button onclick="toggleFullScreen()">Tela Cheia</button>
+                <button class="btn-disconnect" onclick="disconnectViewer()">Desconectar</button>
+            </div>
+        </div>
+
+        <div class="remote-viewport" id="viewportArea">
+            <canvas id="remoteCanvas" tabindex="0"></canvas>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

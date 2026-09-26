@@ -1,0 +1,31 @@
+{
+  "name": "acessodev",
+  "version": "1.0.0",
+  "description": "Aplicativo Open Source de Acesso e Controle Remoto Total de Computador via Internet e Rede Local",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build:engine": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe /optimize+ /target:exe /out:ScreenHostEngine.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll ScreenHostEngine.cs",
+    "build:launcher": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe /target:winexe /out:AcessoDesk.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll Launcher.cs"
+  },
+  "keywords": [
+    "remote-desktop",
+    "screen-sharing",
+    "remote-control",
+    "anydesk-alternative",
+    "teamviewer-alternative",
+    "cloudflare-tunnel",
+    "nodejs",
+    "open-source"
+  ],
+  "author": "Elias Sebastião",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eliassebastiao/ACESSODEV.git"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "ws": "^8.22.0"
+  }
+}
