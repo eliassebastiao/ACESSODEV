@@ -3,125 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AcessoDesk Ultra - Controle Remoto Total</title>
+    <title>AcessoDesk — Acesso Remoto</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header>
+    <header class="masthead">
         <div class="brand">
-            <div class="brand-icon">⚡</div>
-            <div>
-                <div class="brand-title">AcessoDesk Ultra</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted);">Controle Remoto de Alta Performance</div>
-            </div>
+            <span class="brand-mark" aria-hidden="true"></span>
+            <h1 class="brand-name">AcessoDesk</h1>
         </div>
-        <div class="status-badge" id="hostStatusBadge">
-            <span class="status-dot"></span>
-            <span id="hostStatusText">Pronto para Conexão</span>
+        <div class="status-pill" id="hostStatusBadge" data-state="idle">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="hostStatusText">Iniciando</span>
         </div>
     </header>
 
-    <div id="desktopWarning" style="display: none; background: #7f1d1d; color: #fecaca; padding: 12px 24px; font-size: 0.85rem; font-weight: 600; border-bottom: 1px solid #dc2626;">
-        ⚠️ <span id="desktopWarningText"></span>
+    <div class="alert" id="desktopWarning" role="alert" hidden>
+        <strong>Sessão gráfica ausente.</strong>
+        <span id="desktopWarningText"></span>
     </div>
 
-    <div class="main-container" id="lobbyContainer">
-        <div class="cards-grid">
-            <!-- HOST CARD -->
-            <div class="card">
-                <div class="card-header">
-                    <div>
-                        <div class="card-title">Este Computador</div>
-                        <div class="card-subtitle">Permitir acesso remoto a este dispositivo</div>
-                    </div>
-                </div>
+    <main class="shell" id="lobbyContainer">
+        <section class="panel" aria-labelledby="hostHeading">
+            <header class="panel-head">
+                <h2 class="panel-title" id="hostHeading">Esta máquina</h2>
+                <p class="panel-note">Credenciais para permitir acesso a este computador.</p>
+            </header>
 
-                <div class="input-group">
-                    <label>Seu ID de Conexão Rápida</label>
-                    <div class="id-box">
-                        <span class="id-display" id="myIdDisplay">--- ---</span>
-                        <button class="copy-btn" id="copyIdBtn" onclick="copyMyId()">Copiar</button>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Senha de Acesso</label>
-                    <input type="text" id="myPassword" class="input-field" value="1234">
-                </div>
-
-                <div class="input-group" id="publicUrlBox" style="background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.3); border-radius: 8px; padding: 10px;">
-                    <label style="color: #38bdf8; font-weight: 600;">🌐 Link de Acesso Mundial (Internet / 4G):</label>
-                    <div style="display:flex; gap: 8px; align-items: center; margin-top: 4px;">
-                        <input type="text" id="publicUrlInput" class="input-field" style="font-size: 0.85rem; padding: 8px; flex: 1;" readonly value="Gerando túnel Cloudflare seguro...">
-                        <button class="copy-btn" id="copyUrlBtn" onclick="copyPublicUrl()">Copiar Link</button>
-                    </div>
-                </div>
-
-                <div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
-                    Mantenha o app aberto para permitir o controle remoto por operadores autorizados.
+            <div class="credential">
+                <span class="credential-label">ID de sessão</span>
+                <div class="credential-row">
+                    <output class="credential-value" id="myIdDisplay">------</output>
+                    <button class="btn btn-ghost" id="copyIdBtn" onclick="copyMyId()" type="button">Copiar</button>
                 </div>
             </div>
 
-            <!-- CLIENT CARD -->
-            <div class="card">
-                <div class="card-header">
-                    <div>
-                        <div class="card-title">Controlar Outro PC</div>
-                        <div class="card-subtitle">Insira o ID do computador remoto</div>
-                    </div>
+            <div class="field">
+                <label class="field-label" for="myPassword">Senha de acesso</label>
+                <input class="input" type="text" id="myPassword" value="1234" autocomplete="off" spellcheck="false">
+            </div>
+
+            <div class="tunnel">
+                <span class="credential-label">Link público</span>
+                <p class="tunnel-hint">Acesso pela internet sem abrir portas no roteador.</p>
+                <div class="credential-row">
+                    <output class="credential-value credential-url" id="publicUrlInput">estabelecendo túnel…</output>
+                    <button class="btn btn-ghost" id="copyUrlBtn" onclick="copyPublicUrl()" type="button">Copiar</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" aria-labelledby="clientHeading">
+            <header class="panel-head">
+                <h2 class="panel-title" id="clientHeading">Controlar outro computador</h2>
+                <p class="panel-note">Informe o ID e a senha do computador remoto.</p>
+            </header>
+
+            <form class="connect-form" onsubmit="connectToRemote(); return false;">
+                <div class="field">
+                    <label class="field-label" for="targetIdInput">ID do computador</label>
+                    <input class="input input-mono" type="text" id="targetIdInput" placeholder="000000"
+                           maxlength="7" inputmode="numeric" autocomplete="off" spellcheck="false">
                 </div>
 
-                <div class="input-group">
-                    <label>ID do Computador Remoto</label>
-                    <input type="text" id="targetIdInput" class="input-field" placeholder="ex: 123456" maxlength="7">
+                <div class="field">
+                    <label class="field-label" for="targetPasswordInput">Senha</label>
+                    <input class="input" type="password" id="targetPasswordInput" placeholder="Senha" value="1234"
+                           autocomplete="off" spellcheck="false">
                 </div>
 
-                <div class="input-group">
-                    <label>Senha de Acesso</label>
-                    <input type="password" id="targetPasswordInput" class="input-field" placeholder="Senha do PC remoto" value="1234">
-                </div>
-
-                <button class="btn-connect" onclick="connectToRemote()">
-                    <span>Conectar e Assumir Controle</span>
-                    <span>➜</span>
+                <button class="btn btn-primary" type="submit" id="connectBtn">
+                    <span class="btn-label">Assumir controle</span>
                 </button>
 
-                <div id="connectFeedback" style="font-size: 0.85rem; color: #ef4444; min-height: 20px;"></div>
-            </div>
-        </div>
-    </div>
+                <p class="feedback" id="connectFeedback" role="status" aria-live="polite"></p>
+            </form>
+        </section>
+    </main>
 
-    <!-- VIEWER SCREEN -->
-    <div class="viewer-container" id="viewerContainer">
+    <div class="viewer" id="viewerContainer" hidden>
         <div class="viewer-bar">
-            <div style="display:flex; align-items:center; gap: 12px;">
-                <span style="font-weight: 700; color: #38bdf8;">Controlando:</span>
-                <span id="remoteTargetName" style="font-family: monospace; color: #e2e8f0;">-</span>
-                <span class="fps-counter" id="fpsDisplay">FPS: 0</span>
+            <div class="viewer-meta">
+                <span class="viewer-kicker">Controlando</span>
+                <span class="viewer-target" id="remoteTargetName">—</span>
+                <span class="viewer-stats" id="fpsDisplay">aguardando quadros</span>
             </div>
 
             <div class="viewer-tools">
-                <label style="font-size: 0.8rem; color: #94a3b8;">Qualidade:</label>
-                <select id="qualitySelect" onchange="changeQuality(this.value)">
-                    <option value="50">Rápida (50%)</option>
-                    <option value="70" selected>Equilibrada (70%)</option>
-                    <option value="90">Ultra HD (90%)</option>
-                </select>
+                <label class="tool">
+                    <span>Qualidade</span>
+                    <select id="qualitySelect" onchange="changeQuality(this.value)">
+                        <option value="50">Econômica</option>
+                        <option value="70" selected>Equilibrada</option>
+                        <option value="90">Alta</option>
+                    </select>
+                </label>
 
-                <label style="font-size: 0.8rem; color: #94a3b8;">FPS:</label>
-                <select id="fpsSelect" onchange="changeFps(this.value)">
-                    <option value="20">20 FPS</option>
-                    <option value="30" selected>30 FPS</option>
-                    <option value="60">60 FPS</option>
-                </select>
+                <label class="tool">
+                    <span>Taxa</span>
+                    <select id="fpsSelect" onchange="changeFps(this.value)">
+                        <option value="20">20 fps</option>
+                        <option value="30" selected>30 fps</option>
+                        <option value="60">60 fps</option>
+                    </select>
+                </label>
 
-                <button onclick="toggleFullScreen()">Tela Cheia</button>
-                <button class="btn-disconnect" onclick="disconnectViewer()">Desconectar</button>
+                <button class="btn btn-ghost" onclick="toggleFullScreen()" type="button">Tela cheia</button>
+                <button class="btn btn-danger" onclick="disconnectViewer()" type="button">Desconectar</button>
             </div>
         </div>
 
-        <div class="remote-viewport" id="viewportArea">
+        <div class="viewer-stage" id="viewportArea">
             <canvas id="remoteCanvas" tabindex="0"></canvas>
+            <p class="viewer-hint">Clique na imagem para Assume o controle do mouse e teclado.</p>
         </div>
     </div>
 

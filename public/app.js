@@ -3,12 +3,35 @@ let myId = '';
 let targetId = '';
 let canvas = document.getElementById('remoteCanvas');
 let ctx = canvas.getContext('2d');
-let frameImg = new Image();
 let frameCount = 0;
 let lastFpsTime = Date.now();
 let isControlling = false;
 let isDecoding = false;
 let pendingBitmap = null;
+
+const el = (id) => document.getElementById(id);
+
+/* Estado do host no cabeçalho */
+function setHostStatus(label, state) {
+    el('hostStatusText').textContent = label;
+    el('hostStatusBadge').dataset.state = state;
+}
+
+/* Feedback de conexão com tom semântico */
+function setFeedback(message, tone) {
+    const node = el('connectFeedback');
+    node.textContent = message;
+    if (tone) node.dataset.tone = tone;
+    else delete node.dataset.tone;
+}
+
+/* Botão em estado de carregamento / desabilitado */
+function setConnecting(isConnecting) {
+    const btn = el('connectBtn');
+    btn.disabled = isConnecting;
+    btn.dataset.loading = String(isConnecting);
+    btn.querySelector('.btn-label').textContent = isConnecting ? 'Conectando' : 'Assumir controle';
+}
 
 function pollServerStatus() {
     fetch('/api/status')
@@ -17,61 +40,63 @@ function pollServerStatus() {
             if (data.session) {
                 if (data.session.id) {
                     myId = data.session.id;
-                    document.getElementById('myIdDisplay').innerText = myId.slice(0,3) + ' ' + myId.slice(3);
+                    el('myIdDisplay').textContent = myId;
                 }
                 if (data.session.password) {
-                    document.getElementById('myPassword').value = data.session.password;
+                    el('myPassword').value = data.session.password;
                 }
                 if (data.session.publicUrl) {
-                    const pubInput = document.getElementById('publicUrlInput');
-                    if (pubInput) pubInput.value = data.session.publicUrl;
+                    el('publicUrlInput').textContent = data.session.publicUrl;
                 }
             }
-            // Alerta de sessao grafica ausente (captura preta)
-            const warn = document.getElementById('desktopWarning');
-            if (warn && data.captureWarning) {
-                document.getElementById('desktopWarningText').innerText = data.captureWarning;
-                warn.style.display = 'block';
-            } else if (warn) {
-                warn.style.display = 'none';
+
+            // Estados reais do host — sem metadados decorativos
+            if (data.captureWarning) {
+                setHostStatus('Captura indisponível', 'busy');
+                el('desktopWarningText').textContent = data.captureWarning;
+                el('desktopWarning').hidden = false;
+            } else if (data.engineReady) {
+                setHostStatus('Pronto para acesso', 'online');
+                el('desktopWarning').hidden = true;
+            } else {
+                setHostStatus('Iniciando motor', 'busy');
             }
         })
-        .catch(() => {});
+        .catch(() => setHostStatus('Servidor sem resposta', 'idle'));
 }
 
 setInterval(pollServerStatus, 3000);
 pollServerStatus();
 
+/* Cópia com feedback temporário no próprio botão */
+function copyWithFeedback(inputId, buttonId, value) {
+    const restore = el(buttonId).textContent;
+    navigator.clipboard.writeText(value).then(() => {
+        el(buttonId).textContent = 'Copiado';
+        setTimeout(() => { el(buttonId).textContent = restore; }, 1600);
+    });
+}
+
 function copyPublicUrl() {
-    const url = document.getElementById('publicUrlInput').value;
-    navigator.clipboard.writeText(url);
-    const btn = document.getElementById('copyUrlBtn');
-    btn.innerText = 'Copiado!';
-    setTimeout(() => { btn.innerText = 'Copiar Link'; }, 2000);
+    copyWithFeedback('publicUrlInput', 'copyUrlBtn', el('publicUrlInput').textContent);
 }
 
 function copyMyId() {
-    navigator.clipboard.writeText(myId);
-    const btn = document.getElementById('copyIdBtn');
-    btn.innerText = 'Copiado!';
-    setTimeout(() => { btn.innerText = 'Copiar'; }, 2000);
+    copyWithFeedback('myIdDisplay', 'copyIdBtn', myId);
 }
 
 function initSignaling() {
     const loc = window.location;
     const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProto}//${loc.host || '127.0.0.1:8080'}/ws`;
-    
+
     ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
-        // Se for o cliente/operador abrindo a página para controlar, não deve sobrescrever o host principal
-        // Só registra como host auxiliar caso não seja cliente ativo
-        const clientTempId = 'client_' + Math.random().toString(36).substring(2, 9);
         ws.send(JSON.stringify({
             type: 'REGISTER_OPERATOR',
-            id: clientTempId
+            id: 'client_' + Math.random().toString(36).substring(2, 9)
         }));
     };
 
@@ -86,24 +111,26 @@ function initSignaling() {
     };
 
     ws.onclose = () => {
+        if (isControlling) setHostStatus('Conexão perdida', 'busy');
         setTimeout(initSignaling, 2000);
     };
 }
 
 function handleMessage(data) {
     if (data.type === 'REGISTERED') {
-        document.getElementById('hostStatusBadge').style.color = '#10b981';
-        document.getElementById('hostStatusText').innerText = 'Online e Pronto';
+        setHostStatus('Pronto para acesso', 'online');
     } else if (data.type === 'CONNECTED_SUCCESS') {
+        setConnecting(false);
         startControlSession(data.targetId);
     } else if (data.type === 'CONNECT_ERROR') {
-        document.getElementById('connectFeedback').innerText = data.message;
+        setConnecting(false);
+        setFeedback(data.message, 'error');
     } else if (data.type === 'HOST_DISCONNECTED') {
-        alert(data.message || 'Sessão finalizada');
+        setConnecting(false);
+        setFeedback(data.message || 'O computador remoto encerrou a sessão.', 'error');
         disconnectViewer();
     } else if (data.type === 'CLIENT_ATTACHED') {
-        document.getElementById('hostStatusBadge').style.color = '#38bdf8';
-        document.getElementById('hostStatusText').innerText = 'Sessão Ativa';
+        setHostStatus('Sessão em andamento', 'busy');
     }
 }
 function renderFrameBuffer(buffer) {
@@ -134,7 +161,7 @@ async function decodeAndDraw(buffer) {
         frameCount++;
         const now = Date.now();
         if (now - lastFpsTime >= 1000) {
-            document.getElementById('fpsDisplay').innerText = `FPS: ${frameCount} | ${canvas.width}x${canvas.height}`;
+            el('fpsDisplay').textContent = `${frameCount} fps · ${canvas.width}×${canvas.height}`;
             frameCount = 0;
             lastFpsTime = now;
         }
@@ -151,19 +178,24 @@ async function decodeAndDraw(buffer) {
 }
 
 function connectToRemote() {
-    const rawTarget = document.getElementById('targetIdInput').value.replace(/\s+/g, '');
-    const pass = document.getElementById('targetPasswordInput').value;
-    const feedback = document.getElementById('connectFeedback');
-    feedback.innerText = '';
+    const rawTarget = el('targetIdInput').value.replace(/\s+/g, '');
+    const pass = el('targetPasswordInput').value;
 
+    // Estado vazio/erro antes de qualquer envio
     if (rawTarget.length < 5) {
-        feedback.innerText = 'Digite um ID válido de 6 dígitos';
+        setFeedback('Informe o ID completo do computador remoto.', 'error');
+        el('targetIdInput').focus();
+        return;
+    }
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        setFeedback('Sem conexão com o servidor. Tentando reconectar…', 'error');
         return;
     }
 
     targetId = rawTarget;
-    feedback.style.color = '#38bdf8';
-    feedback.innerText = 'Conectando ao computador remoto...';
+    setConnecting(true);
+    setFeedback('Conectando ao computador remoto…', 'progress');
 
     ws.send(JSON.stringify({
         type: 'CONNECT_TARGET',
@@ -173,25 +205,28 @@ function connectToRemote() {
 }
 
 function startControlSession(tId) {
-    document.getElementById('lobbyContainer').style.display = 'none';
-    document.getElementById('viewerContainer').style.display = 'flex';
-    document.getElementById('remoteTargetName').innerText = 'ID #' + tId;
+    el('lobbyContainer').hidden = true;
+    el('viewerContainer').hidden = false;
+    el('remoteTargetName').textContent = 'ID ' + tId;
     isControlling = true;
+    frameCount = 0;
+    lastFpsTime = Date.now();
     canvas.focus();
     setupInputListeners();
 }
 
 function disconnectViewer() {
     isControlling = false;
-    document.getElementById('viewerContainer').style.display = 'none';
-    document.getElementById('lobbyContainer').style.display = 'flex';
-    document.getElementById('connectFeedback').innerText = '';
+    el('viewerContainer').hidden = true;
+    el('lobbyContainer').hidden = false;
+    setConnecting(false);
+    setFeedback('Sessão encerrada.', 'ok');
 }
 
 function toggleFullScreen() {
-    const el = document.getElementById('viewerContainer');
+    const target = el('viewerContainer');
     if (!document.fullscreenElement) {
-        el.requestFullscreen().catch(() => {});
+        target.requestFullscreen().catch(() => {});
     } else {
         document.exitFullscreen().catch(() => {});
     }
