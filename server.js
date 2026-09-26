@@ -209,7 +209,7 @@ function connectEngineSocket() {
 
 function broadcastFrame(frameBuffer) {
     for (const [id, peer] of peers.entries()) {
-        if (peer.role === 'client' && peer.ws.readyState === WebSocket.OPEN) {
+        if (peer.role === 'client' && peer.ws && peer.ws.readyState === WebSocket.OPEN) {
             try {
                 peer.ws.send(frameBuffer, { binary: true });
             } catch (err) {}
@@ -240,6 +240,13 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        if (type === 'REGISTER_OPERATOR') {
+            currentId = data.id || ('client_' + Math.random().toString(36).substring(2, 9));
+            peers.set(currentId, { ws, role: 'operator' });
+            ws.send(JSON.stringify({ type: 'REGISTERED', id: currentId }));
+            return;
+        }
+
         if (type === 'REGISTER_HOST') {
             currentId = data.id || hostSession.id;
             hostSession.id = currentId;
@@ -253,10 +260,13 @@ wss.on('connection', (ws) => {
         }
 
         if (type === 'CONNECT_TARGET') {
-            const targetId = data.targetId;
+            const targetId = (data.targetId || '').replace(/\s+/g, '');
+            
+            // Verifica se o ID bate com o host local do servidor
+            const isLocalHost = (targetId === hostSession.id);
             const target = peers.get(targetId);
 
-            if (!target) {
+            if (!isLocalHost && !target) {
                 ws.send(JSON.stringify({
                     type: 'CONNECT_ERROR',
                     message: 'Computador não encontrado ou offline. Verifique o ID.'
@@ -264,7 +274,8 @@ wss.on('connection', (ws) => {
                 return;
             }
 
-            if (target.password && target.password !== data.password) {
+            const expectedPass = isLocalHost ? hostSession.password : (target ? target.password : '');
+            if (expectedPass && expectedPass !== data.password) {
                 ws.send(JSON.stringify({
                     type: 'CONNECT_ERROR',
                     message: 'Senha incorreta para acesso remoto.'
@@ -275,9 +286,11 @@ wss.on('connection', (ws) => {
             currentId = 'client_' + Math.random().toString(36).substring(2, 9);
             peers.set(currentId, { ws, role: 'client', targetId: targetId });
 
-            try {
-                target.ws.send(JSON.stringify({ type: 'CLIENT_ATTACHED', clientId: currentId }));
-            } catch (e) {}
+            if (target && target.ws) {
+                try {
+                    target.ws.send(JSON.stringify({ type: 'CLIENT_ATTACHED', clientId: currentId }));
+                } catch (e) {}
+            }
 
             ws.send(JSON.stringify({ type: 'CONNECTED_SUCCESS', targetId: targetId }));
             console.log(`[APP] Conexão bem-sucedida! Cliente ${currentId} -> Host ${targetId}`);

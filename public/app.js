@@ -56,10 +56,12 @@ function initSignaling() {
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
+        // Se for o cliente/operador abrindo a página para controlar, não deve sobrescrever o host principal
+        // Só registra como host auxiliar caso não seja cliente ativo
+        const clientTempId = 'client_' + Math.random().toString(36).substring(2, 9);
         ws.send(JSON.stringify({
-            type: 'REGISTER_HOST',
-            id: myId,
-            password: document.getElementById('myPassword').value
+            type: 'REGISTER_OPERATOR',
+            id: clientTempId
         }));
     };
 
@@ -68,6 +70,8 @@ function initSignaling() {
             handleMessage(JSON.parse(event.data));
         } else if (event.data instanceof ArrayBuffer) {
             renderFrameBuffer(event.data);
+        } else if (event.data instanceof Blob) {
+            event.data.arrayBuffer().then(buf => renderFrameBuffer(buf));
         }
     };
 
