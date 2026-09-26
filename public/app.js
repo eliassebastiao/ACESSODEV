@@ -97,8 +97,11 @@ function handleMessage(data) {
     }
 }
 function renderFrameBuffer(buffer) {
+    if (!buffer || buffer.byteLength === 0) return;
     const blob = new Blob([buffer], { type: 'image/jpeg' });
     const url = URL.createObjectURL(blob);
+    
+    // Suporte tanto para Canvas quanto para Imagem de alta performance
     frameImg.onload = () => {
         if (canvas.width !== frameImg.width || canvas.height !== frameImg.height) {
             canvas.width = frameImg.width;
@@ -114,6 +117,10 @@ function renderFrameBuffer(buffer) {
             frameCount = 0;
             lastFpsTime = now;
         }
+    };
+    frameImg.onerror = (e) => {
+        console.error('Erro ao decodificar frame JPEG:', e);
+        URL.revokeObjectURL(url);
     };
     frameImg.src = url;
 }

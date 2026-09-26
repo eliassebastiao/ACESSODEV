@@ -153,8 +153,19 @@ app.get('/api/status', (req, res) => {
         session: hostSession,
         engineReady,
         activeViewers: viewers.size,
+        hasFrames: latestFrame !== null,
+        frameSize: latestFrame ? latestFrame.length : 0,
         uptime: process.uptime()
     });
+});
+
+app.get('/api/screenshot', (req, res) => {
+    if (latestFrame) {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        return res.end(latestFrame);
+    }
+    res.status(503).json({ error: 'Nenhum frame capturado ainda' });
 });
 
 const server = http.createServer(app);
@@ -233,7 +244,11 @@ function connectEngineSocket() {
     });
 }
 
+// Cache do último frame capturado para entrega instantânea
+let latestFrame = null;
+
 function broadcastFrame(frameBuffer) {
+    latestFrame = frameBuffer;
     if (viewers.size === 0) return;
     for (const ws of viewers) {
         if (ws.readyState === WebSocket.OPEN) {
@@ -288,6 +303,13 @@ wss.on('connection', (ws) => {
                 type: 'CONNECTED_SUCCESS',
                 targetId: hostSession.id
             }));
+
+            // Envia imediatamente o último frame se disponível para eliminar tela preta no primeiro instante
+            if (latestFrame) {
+                try {
+                    ws.send(latestFrame, { binary: true });
+                } catch (e) {}
+            }
 
             console.log(`[APP] Operador conectado e autorizado! Total viewers: ${viewers.size}`);
             return;
